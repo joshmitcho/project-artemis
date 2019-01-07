@@ -1,0 +1,2 @@
+export LD_LIBRARY_PATH=$HOME/freenect2/lib:$LD_LIBRARY_PATH
+
