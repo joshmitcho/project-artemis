@@ -1,16 +1,19 @@
 // Stepper - Version: Latest 
 #include <Stepper.h>
+#include <Servo.h>
+
+Servo myservo;
 
 char in_bytes[8];   // for incoming serial data
 const int start_seq = 36;
 const int end_seq = 47;
-int v_ang = 0;
-int h_ang = 0;
+short v_ang = 0;
+short h_ang = 0;
 int v_steps = 0;
 int h_steps = 0;
 int count_h = 0;
 int count_v = 0;
-int ttf = 0xffff;
+short ttf = 0xffff;
 int reply = 0; // for testing serial
 
 const int pulPin = 10;
@@ -30,6 +33,9 @@ int state = 0;
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   Serial.begin(9600);
+  
+  myservo.attach(4);
+  myservo.write(5);
   
   pinMode(pulPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
@@ -59,9 +65,10 @@ void setup() {
 }
 
 void loop() {
-  digitalWrite(dirPin, HIGH);
-  digitalWrite(dirPin_v, HIGH);
   if(state == 0){
+    myservo.write(5);
+    digitalWrite(dirPin, HIGH);
+    digitalWrite(dirPin_v, HIGH);
     digitalWrite(LED_BUILTIN, HIGH);
     while(!ready_v){
       // move limit switches until a limit switch is hit
@@ -83,17 +90,17 @@ void loop() {
     delay(2000);
     while (Serial.available()>=8){
       Serial.readBytes(in_bytes,8);
-      if (start_seq == (int)in_bytes[0] && end_seq == (int)in_bytes[7]){
+      if (start_seq == (short)in_bytes[0] && end_seq == (short)in_bytes[7]){
         // a packet has been received so read data
         //finished = 0;
         state = 2;
-        ttf = ((int)in_bytes[1]<<8 & 0xff00) | ((int)in_bytes[2] & 0xff);
-        h_ang = ((int)in_bytes[3]<<8 & 0xff00) | ((int)in_bytes[4] & 0xff);
-        v_ang = ((int)in_bytes[5]<<8 & 0xff00) | ((int)in_bytes[6] & 0xff);
+        ttf = ((short)in_bytes[1]<<8 & 0xff00) | ((short)in_bytes[2] & 0xff);
+        h_ang = ((short)in_bytes[3]<<8 & 0xff00) | ((short)in_bytes[4] & 0xff);
+        v_ang = ((short)in_bytes[5]<<8 & 0xff00) | ((short)in_bytes[6] & 0xff);
       }
     }
-    h_steps = 27*400/(360/abs(h_ang));
-    v_steps = 99.51*400/(360/abs(v_ang));
+    h_steps = abs(h_ang)*27/9;
+    v_steps = abs(v_ang)*99.51/9;
     if(h_ang < 0){
       digitalWrite(dirPin, HIGH); 
     } else{
@@ -104,6 +111,7 @@ void loop() {
     } else{
       digitalWrite(dirPin_v, LOW); 
     }
+
   }
   if(state == 2){
     if(count_h<h_steps){ // if not in position yet
@@ -118,11 +126,13 @@ void loop() {
     }
     delayMicroseconds(dly);
     if (!(count_h<h_steps) && !(count_v<v_steps)){
-      //fire
-      delay(3000);
+      myservo.write(90);
+      delay(1000);
+      myservo.write(5);
+      delay(6000);
       state = 0; // later reset with timer
-      ready_v = 0; ready_h = 0;
-      count_h = 0; count_v = 0;
+      ready_v = 0; ready_h = 0; // later reset with time
+      count_h = 0; count_v = 0; //later reset with time
     }
   } // end of state 2
 } // end of loop()
