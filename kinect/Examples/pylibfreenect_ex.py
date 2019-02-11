@@ -28,7 +28,7 @@ print("Packet pipeline:", type(pipeline).__name__)
 
 
 fn = Freenect2()
-num_devices = fn.enumerateDevices()
+num_devices = fn.enumerateDevices()q
 if num_devices == 0:
     print("No device connected!")
     sys.exit(1)

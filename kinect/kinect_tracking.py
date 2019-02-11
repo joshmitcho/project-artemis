@@ -92,8 +92,7 @@ class imageProcessor:
         save_video = False
 
         bigdepth = Frame(1920, 1082, 4) if need_bigdepth else None
-        color_depth_map = np.zeros((424, 512),  np.int32).ravel() \
-            if need_color_depth_map else None
+        color_depth_map = np.zeros((424, 512),  np.int32).ravel()
 
         if save_video is True:
             # Define the codec and create VideoWriter object

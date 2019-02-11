@@ -1,5 +1,7 @@
 
 import imutils
+import subprocess
+#subprocess.check_output(['export', 'LD_LIBRARY_PATH=$HOME/freenect2/lib:$LD_LIBRARY_PATH'])
 import numpy as np
 import cv2
 import time
@@ -7,11 +9,16 @@ import sys
 from collections import deque
 import argparse
 import os
+print(os.getcwd())
 from pylibfreenect2 import Freenect2, SyncMultiFrameListener
 from pylibfreenect2 import FrameType, Registration, Frame
 from pylibfreenect2 import createConsoleLogger, setGlobalLogger
 from pylibfreenect2 import LoggerLevel
-
+from  tracker import TD2ndTracker
+import matplotlib.pyplot as plt
+import math
+import serial
+import struct
 
 
 try:
@@ -27,14 +34,41 @@ except:
 print("Packet pipeline:", type(pipeline).__name__)
 
 
+def get_angles(x, y, z):
+    # x_of = 0.204
+    # y_of = 0.34
+    # z_of = 0.265
+    # z_blaster = z + z_of
+    # y_blaster = y + y_of
+    # x_blaster = x + x_of
+    # phi = math.atan(x_blaster / z_blaster) * 360 / 2 / math.pi
+    # theta = math.atan(y_blaster/(z_blaster - 0.068*math.cos(phi)))*360 /2 / math.pi
+
+    # try:
+    #     phi = 1./math.atan(500.0*(200.*z+53.)/(2.*(500.*x + 69.)))*360./2.
+    # except:
+    #     phi = 0
+    #theta = -601*math.atan((x-0.204)/(z+0.265)) -48.4
+    base = math.atan((x - 0.204) / (z + 0.265))
+    theta = -28.8 - 619 * base - 102 * base ** 2 + 522 * base ** 3 + 1769 * base ** 4
+    phi = 581 * math.atan((y + 0.34) / (z + 0.265 - 0.068 * math.cos(theta * math.pi / 180))) - 22.9
+    return [theta, phi]
+
+
+
 class ImageProcessor:
 
     def __init__(self):
+        dt = 0.066 # time step
+        R_std = 0.0
+        Q_std = 0.1
+        self.tracker = TD2ndTracker(Q_std, R_std, dt)
         self.X = 0.0
         self.Y = 0.0
         self.Z = 0.0
         self.prevFrame = time.time()
-
+        self.xs, self.ys, self.zrs = [], [], []
+        self.xrs, self.yrs, self.zrrs = [], [], []
         self.fn = Freenect2()
         num_devices = self.fn.enumerateDevices()
         if num_devices == 0:
@@ -138,14 +172,41 @@ class ImageProcessor:
             # if radius exists print XYZ from camera
             if int(radius) is not 0:
                 X, Y, Z = self.registration.getPointXYZ(undistorted, int(y), int(x))
+                get_angles(X, Y, Z)
+                self.tracker.predict()
+                x = [X, Y, Z]
+                self.tracker.update(x)
                 cv2.putText(frame, 'X = %.3f Y = %.3f Z = %.3f' % (X, Y, Z), (0, 50), cv2.FONT_HERSHEY_PLAIN, 1,
                             (255, 255, 0))
+                self.xs.append(self.tracker.tracker.x[0])
+                self.ys.append(self.tracker.tracker.x[1])
+                self.zrs.append(self.tracker.tracker.x[2])
+                self.xrs.append(X)
+                self.yrs.append(Y)
+                self.zrrs.append(Z)
+            else:
+                self.tracker.predict()
+                x = [self.tracker.tracker.x[0], self.tracker.tracker.x[1], self.tracker.tracker.x[2]]
+                self.tracker.update(x)
+                self.xs.append(self.tracker.tracker.x[0])
+                self.ys.append(self.tracker.tracker.x[1])
+                self.zrs.append(self.tracker.tracker.x[2])
 
+            if len(self.xs) > 200:
+                print("wheres my plot?")
+                #plt.close()
+                plt.plot(self.xs, self.ys, 'ro')
+                plt.plot(self.xrs, self.yrs, 'bo')
+                plt.show()
+                print(self.xs)
+                self.xs = []
+                self.ys = []
+                self.zrs = []
             end = time.time()
             if end - start > max_val and end - startTime > 1:
                 max_val = end - start
 
-            if end - start > 0.033:
+            if end - start > 0.066:
                 count_over33 = count_over33 + 1
             print(str(count_over33))
 
@@ -230,7 +291,7 @@ class ImageProcessor:
         # if radius exists print XYZ from camera
         if int(radius) is not 0:
             self.X, self.Y, self.Z = self.registration.getPointXYZ(undistorted, int(y), int(x))
-            cv2.putText(frame, 'X = %.3f Y = %.3f Z = %.3f' % (X, Y, Z), (0, 50), cv2.FONT_HERSHEY_PLAIN, 1,
+            cv2.putText(frame, 'X = %.3f Y = %.3f Z = %.3f' % (self.X, self.Y, self.Z), (0, 50), cv2.FONT_HERSHEY_PLAIN, 1,
                         (255, 255, 0))
 
         # show the frame to our screen
@@ -249,15 +310,56 @@ class ImageProcessor:
 
         
 imageRunner = ImageProcessor()
+print(os.getcwd())
 time.sleep(2.0)
+Fire = 255
+target = False
+prev_angles = [0, 0]
+# imageRunner.runContinuous()
+ser = serial.Serial('/dev/ttyACM0', 9600, timeout=3)
+time.sleep(15)
 while True:
     X, Y, Z, fTime = imageRunner.runSingleFrame()
-    print('X = %.3f Y = %.3f Z = %.3f' % (X, Y, Z))
+    angles = get_angles(X, Y, Z)
+    #print('X = %.3f Y = %.3f Z = %.3f' % (X, Y, Z))
+    #print('phi = %.3f, theta = %.3f' % (angles[0], angles[1]))
+    if angles[0] > -400 and angles[0] < 400 and angles[1] > -600 and angles[1] < 600:
+        target = True
+        print('phi = %.3f, theta = %.3f' % (angles[0], angles[1]))
+
+        angle_delta = [abs(int(angles[0]) - prev_angles[0]), abs(int(angles[1]) - prev_angles[1])*4]
+
+        xFlag = angle_delta[0] > 4
+        yFlag = angle_delta[1] > 10
+
+        if xFlag and yFlag:
+            prev_angles = [angles[0], angles[1]]
+            ser.write(struct.pack('>bhhhb', 36, Fire, int(angles[0]), int(angles[1]), 47))
+
+        elif xFlag:
+            prev_angles = [angles[0], prev_angles[1]]
+            ser.write(struct.pack('>bhhhb', 36, Fire, int(angles[0]), int(prev_angles[1]), 47))
+
+        elif yFlag:
+            prev_angles = [prev_angles[0], angles[1]]
+            ser.write(struct.pack('>bhhhb', 36, Fire, int(prev_angles[0]), int(angles[1]), 47))
+
+        elif Fire is 0:
+            ser.write(struct.pack('>bhhhb', 36, Fire, int(prev_angles[0]), int(prev_angles[1]), 47))
+            Fire = 255
+            time.sleep(2)
+
+
+
+        time.sleep(sum(angle_delta) * 0.003 + 0.012)
     key = cv2.waitKey(1) & 0xFF
 
-    # if 'q' is pressed, stop the loop
+    #if 'q' is pressed stop the loop
     if key == ord("q"):
         break
+    elif key == ord(" "):
+        Fire = 0
 
 imageRunner.closeKinect()
+ser.close()
 

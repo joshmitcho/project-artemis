@@ -1,0 +1,28 @@
+import serial
+import time
+import struct
+import random
+
+count = 120
+successes = 0
+failures = 0
+ser = serial.Serial('/dev/ttyACM0', 9600, timeout = 3)
+time.sleep(12)
+#while count < 10:
+y = count
+ser.write(struct.pack('>bhhhb',36,10,-200,-100,47))
+#print(ord(s))
+#if (ord(s) == 1):
+#    successes += 1
+#else:
+#print count
+#print ord(s)
+#    failures += 1
+count+=1
+time.sleep(5)
+
+#print "number of successes"
+#print successes
+#print "number of failures"
+#print failures
+ser.close()
