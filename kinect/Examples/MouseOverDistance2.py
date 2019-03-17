@@ -32,9 +32,9 @@ def get_angles(x, y, z):
     #     phi = 1./math.atan(500.0*(200.*z+53.)/(2.*(500.*x + 69.)))*360./2.
     # except:
     #     phi = 0
-    base = math.atan((x-0.204)/(z+0.265))
-    theta = -30.8 -619*base -102*base**2 +522*base**3 + 1769*base**4
-    phi = 581*math.atan((y+0.34)/(z+0.265-0.068*math.cos(theta*math.pi/180))) -24.9
+    base = math.atan((x-0.315)/(z+0.265))
+    theta = -652*base - 38.6
+    phi = 574*math.atan((y+0.34)/(z+0.18-0.055*math.cos(theta*math.pi/180))) -35.4
     return [theta, phi]
 
 try:
@@ -128,7 +128,7 @@ while True:
     X, Y, Z = registration.getPointXYZ(undistorted, int(refPt[-1][0]), int(refPt[-1][1]))
     angles = get_angles(X, Y, Z)
     cv2.putText(frame, 'X = %.3f Y = %.3f Z = %.3f ' % (X, Y, Z), (0, 50), cv2.FONT_HERSHEY_PLAIN, 1,
-                            (255, 255, 0))
+                            (255, 0, 0))
     cv2.putText(frame, 'theta = %.3f phi = %.3f ' % (angles[0], angles[1]), (50, 100),
                 cv2.FONT_HERSHEY_PLAIN, 1,
                 (255, 255, 0))

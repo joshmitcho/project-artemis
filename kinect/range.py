@@ -126,12 +126,27 @@ def main():
         listener.release(frames)
 
     setup_trackbars(range_filter)
+    bigdepth = Frame(1920, 1082, 4)
+    color_depth_map = np.zeros((424, 512), np.int32).ravel()
+    undistorted = Frame(512, 424, 4)
+    registered = Frame(512, 424, 4)
 
     while True:
         if args['webcam']:
             frames = listener.waitForNewFrame()
-            image = frames["color"].asarray(np.uint8)
-            image = imutils.resize(image, width=600)
+            color = frames["color"]
+            depth = frames["depth"]
+            registration.apply(color, depth, undistorted, registered,
+                                    bigdepth=bigdepth,
+                                    color_depth_map=color_depth_map)
+
+            frame = registered.asarray(np.uint8)
+
+            image = frame
+            # cv2.GaussianBlur(frame, (5, 5), 0)
+            #image = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+            # image = frames["color"].asarray(np.uint8)
+            # image = imutils.resize(image, width=600)
             #image = cv2.GaussianBlur(frame, (11, 11), 0)
             #ret, image = camera.read()
 

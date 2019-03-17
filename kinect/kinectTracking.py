@@ -1,15 +1,10 @@
 
 import imutils
-import subprocess
-#subprocess.check_output(['export', 'LD_LIBRARY_PATH=$HOME/freenect2/lib:$LD_LIBRARY_PATH'])
 import numpy as np
 import cv2
 import time
 import sys
-from collections import deque
-import argparse
 import os
-print(os.getcwd())
 from pylibfreenect2 import Freenect2, SyncMultiFrameListener
 from pylibfreenect2 import FrameType, Registration, Frame
 from pylibfreenect2 import createConsoleLogger, setGlobalLogger
@@ -49,9 +44,9 @@ def get_angles(x, y, z):
     # except:
     #     phi = 0
     #theta = -601*math.atan((x-0.204)/(z+0.265)) -48.4
-    base = math.atan((x - 0.204) / (z + 0.265))
-    theta = -28.8 - 619 * base - 102 * base ** 2 + 522 * base ** 3 + 1769 * base ** 4
-    phi = 581 * math.atan((y + 0.34) / (z + 0.265 - 0.068 * math.cos(theta * math.pi / 180))) - 22.9
+    base = math.atan((x - 0.315) / (z + 0.265))
+    theta = -652 * base + 43.2
+    phi = 574 * math.atan((y + 0.34) / (z + 0.18 - 0.055 * math.cos(theta * math.pi / 180))) - 35.4
     return [theta, phi]
 
 
@@ -97,8 +92,8 @@ class ImageProcessor:
 
         # define the lower and upper boundaries of the "green" ball
         # in the HSV color space
-        greenLower = (40, 45, 86)
-        greenUpper = (100, 132, 255)
+        greenLower = (36, 90, 40)
+        greenUpper = (255, 255, 255)
 
         max_val = 0.0
 
@@ -230,8 +225,8 @@ class ImageProcessor:
 
         # define the lower and upper boundaries of the "green" ball
         # in the HSV color space
-        greenLower = (40, 45, 86)
-        greenUpper = (100, 132, 255)
+        greenLower = (36, 90, 40)
+        greenUpper = (255, 255, 255)
 
         max_val = 0
 
@@ -316,50 +311,79 @@ Fire = 255
 target = False
 prev_angles = [0, 0]
 # imageRunner.runContinuous()
-ser = serial.Serial('/dev/ttyACM0', 9600, timeout=3)
-time.sleep(15)
+velocity = []
+Real = []
+pred5 = []
+pred10 = []
+pred15 = []
+pred30 = []
+prev_X = 0
+prev_Y = 0
+prev_Z = 0
+prev_Time = 0
+beenThrown = False
+ser = serial.Serial('/dev/ttyACM1', 9600, timeout=3)
+#time.sleep(22)
 while True:
     X, Y, Z, fTime = imageRunner.runSingleFrame()
+    velocity.append([(X-prev_X)/(fTime-prev_Time),(Y-prev_Y)/(fTime-prev_Time),(Z-prev_Z)/(fTime-prev_Time)])
+    prev_X = X
+    prev_Y = Y
+    prev_Z = Z
+    Real.append([X,Y,Z])
+
+    if velocity[-1][1] < -4:
+        beenThrown = True
+    elif velocity[-1][1] > 2:
+        beenThrown = False
+    if len(velocity) >= 5 and beenThrown is False:
+        X_avg = (velocity[-1][0] + velocity[-2][0] + velocity[-3][0] + velocity[-4][0] + velocity[-5][0])/5
+        Y_avg = (velocity[-1][1] + velocity[-2][1] + velocity[-3][1] + velocity[-4][1] + velocity[-5][1]) / 5
+        Z_avg = (velocity[-1][2] + velocity[-2][2] + velocity[-3][2] + velocity[-4][2] + velocity[-5][2]) / 5
+        pred5.append([X + X_avg*5*0.033,Y + Y_avg*5*0.033,Z+Z_avg*5*0.033])
+        pred10.append([X + X_avg*10*0.033,Y + Y_avg*10*0.033,Z+Z_avg*10*0.033])
+        pred15.append([X + X_avg * 15*0.033, Y + Y_avg * 15*0.033, Z + Z_avg * 15*0.033])
+        pred30.append([X + X_avg * 30*0.033, Y + Y_avg * 30*0.033, Z + Z_avg * 30*0.033])
+    elif len(velocity) >= 5:
+        X_avg = (velocity[-1][0] + velocity[-2][0] + velocity[-3][0] + velocity[-4][0] + velocity[-5][0]) / 5
+        Y_avg = (velocity[-1][1] + velocity[-2][1] + 9.81*0.033)/2
+        Z_avg = (velocity[-1][2] + velocity[-2][2] + velocity[-3][2] + velocity[-4][2] + velocity[-5][2]) / 5
+        pred5.append([X + X_avg * 5 * 0.0333, Y + Y_avg * 5 * 0.0333 + 1/2*9.81*(5*0.0333)**2, Z + Z_avg * 5 * 0.0333])
+        pred10.append([X + X_avg * 10 * 0.0333, Y + Y_avg * 10 * 0.0333 + 1/2*9.81*(10*0.0333)**2, Z + Z_avg * 10 * 0.0333])
+        pred15.append([X + X_avg * 15 * 0.0333, Y + Y_avg * 15 * 0.0333 + 1/2*9.81*(15*0.0333)**2, Z + Z_avg * 15 * 0.0333])
+        pred30.append([X + X_avg * 30 * 0.0333, Y + Y_avg * 30 * 0.0333 + 1/2*9.81*(30*0.0333)**2, Z + Z_avg * 30 * 0.0333])
+    print(velocity[-1][0], velocity[-1][1], velocity[-1][2], fTime - prev_Time)
+    prev_Time = fTime
+    #print("%f, %f, %f, %d" % (X, Y, Z, fTime))
     angles = get_angles(X, Y, Z)
-    #print('X = %.3f Y = %.3f Z = %.3f' % (X, Y, Z))
-    #print('phi = %.3f, theta = %.3f' % (angles[0], angles[1]))
-    if angles[0] > -400 and angles[0] < 400 and angles[1] > -600 and angles[1] < 600:
-        target = True
-        print('phi = %.3f, theta = %.3f' % (angles[0], angles[1]))
+    # print('X = %.3f Y = %.3f Z = %.3f' % (X, Y, Z))
+    # print('phi = %.3f, theta = %.3f' % (angles[0], angles[1]))
+    angleDelta = max([abs(prev_angles[0]-angles[0]),abs(prev_angles[1]-angles[1])])
+    if angles[0] > -400 and angles[0] < 400 and angles[1] > -600 and angles[1] < 600 and angleDelta > 10:
+        prev_angles = [angles[0], angles[1]]
+        ser.write(struct.pack('>bhhhb', 36, Fire, int(angles[0]), int(angles[1]), 47))
 
-        angle_delta = [abs(int(angles[0]) - prev_angles[0]), abs(int(angles[1]) - prev_angles[1])*4]
-
-        xFlag = angle_delta[0] > 4
-        yFlag = angle_delta[1] > 10
-
-        if xFlag and yFlag:
-            prev_angles = [angles[0], angles[1]]
-            ser.write(struct.pack('>bhhhb', 36, Fire, int(angles[0]), int(angles[1]), 47))
-
-        elif xFlag:
-            prev_angles = [angles[0], prev_angles[1]]
-            ser.write(struct.pack('>bhhhb', 36, Fire, int(angles[0]), int(prev_angles[1]), 47))
-
-        elif yFlag:
-            prev_angles = [prev_angles[0], angles[1]]
-            ser.write(struct.pack('>bhhhb', 36, Fire, int(prev_angles[0]), int(angles[1]), 47))
-
-        elif Fire is 0:
-            ser.write(struct.pack('>bhhhb', 36, Fire, int(prev_angles[0]), int(prev_angles[1]), 47))
-            Fire = 255
-            time.sleep(2)
-
-
-
-        time.sleep(sum(angle_delta) * 0.003 + 0.012)
     key = cv2.waitKey(1) & 0xFF
 
-    #if 'q' is pressed stop the loop
+    # if 'q' is pressed stop the loop
     if key == ord("q"):
         break
     elif key == ord(" "):
         Fire = 0
-
+Realfile = open('values.csv','w+')
+for i in range(len(Real)):
+    Realfile.write('%f,%f,%f' % (Real[i][0],Real[i][1],Real[i][2]))
+    if i >= 9:
+        Realfile.write(',%f,%f,%f' % (pred5[i-5][0],pred5[i-5][1],pred5[i-5][2]))
+    if i >= 19:
+        Realfile.write(',%f,%f,%f' % (pred15[i-15][0],pred15[i-15][1],pred15[i-15][2]))
+    if i >= 34:
+        Realfile.write(',%f,%f,%f' % (pred30[i-30][0],pred30[i-30][1],pred30[i-30][2]))
+        Realfile.write('%f,%f,%f' % (velocity[i][0], velocity[i][1], velocity[i][2]))
+    Realfile.write('\n')
+Realfile.close()
 imageRunner.closeKinect()
 ser.close()
+
+
 
